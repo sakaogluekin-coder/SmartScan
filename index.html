@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>SmartScan</title>
+  <title>SmartScan Pro</title>
   
-  <!-- KRİTİK: Düzgün çalışan stabil 2.3.4 sürümü -->
   <script src="https://unpkg.com/html5-qrcode@2.3.4/html5-qrcode.min.js"></script>
 
   <style>
@@ -21,9 +20,10 @@
       color: #f8fafc;
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      min-height: 100vh;
       justify-content: space-between;
       padding: 12px;
+      gap: 10px;
     }
 
     header {
@@ -33,6 +33,7 @@
       padding: 10px 14px;
       background: rgba(30, 41, 59, 0.8);
       border-radius: 12px;
+      backdrop-filter: blur(8px);
     }
 
     .title {
@@ -49,12 +50,13 @@
       font-weight: 600;
       font-size: 0.8rem;
       cursor: pointer;
+      text-decoration: none;
     }
 
     .camera-box {
       position: relative;
       width: 100%;
-      height: 50vh;
+      height: 40vh;
       background: #000;
       border-radius: 16px;
       overflow: hidden;
@@ -70,6 +72,21 @@
       object-fit: cover !important;
       width: 100% !important;
       height: 100% !important;
+    }
+
+    .torch-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 20;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
     }
 
     .result-box {
@@ -113,6 +130,44 @@
       color: #fff;
     }
 
+    .history-box {
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 12px;
+      padding: 12px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .history-title {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .history-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .history-item {
+      font-size: 0.8rem;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 6px 10px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .history-item span {
+      cursor: pointer;
+      color: #38bdf8;
+    }
+
     .ad-box {
       height: 50px;
       background: rgba(255, 255, 255, 0.03);
@@ -129,22 +184,31 @@
 <body>
 
   <header>
-    <div class="title">Barkod Okuyucu</div>
-    <button class="btn-coffee" onclick="alert('Destek olduğunuz için teşekkürler!')">☕ Kahve Ismarla</button>
+    <div class="title">SmartScan Pro</div>
+    <button class="btn-coffee" onclick="donateAlert()">☕ Kahve Ismarla</button>
   </header>
 
   <div class="camera-box">
+    <button class="torch-btn" id="btn-torch" onclick="toggleTorch()">🔦 Flaş Aç/Kapat</button>
     <div id="reader"></div>
   </div>
 
   <div class="result-box">
-    <div style="font-size:0.75rem; color:#94a3b8;">SONUÇ:</div>
+    <div style="font-size:0.75rem; color:#94a3b8;">SON OKUNAN BARKOD:</div>
     <div class="result-code" id="code-text">Barkod hizalayın...</div>
     
     <div class="actions">
       <button class="btn btn-main" id="btn-search">Web'de Ara</button>
       <button class="btn btn-sub" id="btn-copy">Kopyala</button>
     </div>
+  </div>
+
+  <div class="history-box">
+    <div class="history-title">
+      <span>TARAMA GEÇMİŞİ</span>
+      <span style="cursor:pointer; color:#ef4444;" onclick="clearHistory()">Temizle</span>
+    </div>
+    <ul class="history-list" id="history-list"></ul>
   </div>
 
   <div class="ad-box">
@@ -154,25 +218,87 @@
   <script>
     let lastCode = "";
     let html5QrCode;
+    let isTorchOn = false;
+    let history = JSON.parse(localStorage.getItem("scanHistory") || "[]");
+
+    // Bip Sesi Oluşturucu (Web Audio API)
+    function playBeep() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 1000; // 1000Hz bip sesi
+        gain.gain.value = 0.1;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } catch (e) {
+        console.log("Audio not allowed yet");
+      }
+    }
 
     function onScanSuccess(decodedText) {
       if (lastCode === decodedText) return;
       lastCode = decodedText;
 
+      playBeep();
+
       if (navigator.vibrate) {
-        navigator.vibrate(80);
+        navigator.vibrate(100);
       }
 
       document.getElementById("code-text").innerText = decodedText;
+      addHistory(decodedText);
+    }
+
+    function addHistory(code) {
+      if (!history.includes(code)) {
+        history.unshift(code);
+        if (history.length > 10) history.pop(); // Son 10 kaydı tut
+        localStorage.setItem("scanHistory", JSON.stringify(history));
+        renderHistory();
+      }
+    }
+
+    function renderHistory() {
+      const listEl = document.getElementById("history-list");
+      listEl.innerHTML = "";
+      history.forEach(code => {
+        const li = document.createElement("li");
+        li.className = "history-item";
+        li.innerHTML = `
+          <span>${code}</span>
+          <button style="background:none; border:none; color:#22c55e; cursor:pointer;" onclick="searchCode('${code}')">Ara 🔍</button>
+        `;
+        listEl.appendChild(li);
+      });
+    }
+
+    function clearHistory() {
+      history = [];
+      localStorage.removeItem("scanHistory");
+      renderHistory();
+    }
+
+    function toggleTorch() {
+      if (html5QrCode) {
+        isTorchOn = !isTorchOn;
+        html5QrCode.applyVideoConstraints({
+          advanced: [{ torch: isTorchOn }]
+        }).catch(err => {
+          alert("Flaş bu cihazda desteklenmiyor veya açılamadı.");
+        });
+      }
     }
 
     function initCamera() {
       html5QrCode = new Html5Qrcode("reader");
 
-      // Çizgili ürün barkodları için özel yapılandırma
       const config = {
         fps: 20,
-        qrbox: { width: 300, height: 150 }, // Geniş yatay dikdörtgen alanı
+        qrbox: { width: 280, height: 140 },
         formatsToSupport: [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
@@ -188,7 +314,6 @@
         config,
         onScanSuccess
       ).catch(err => {
-        // İkinci şans: Kamera kimliği ile dene
         Html5Qrcode.getCameras().then(devices => {
           if (devices && devices.length) {
             html5QrCode.start(devices[0].id, config, onScanSuccess);
@@ -197,10 +322,12 @@
       });
     }
 
+    function searchCode(code) {
+      window.open(`https://www.google.com/search?q=${encodeURIComponent(code)}`, '_blank');
+    }
+
     document.getElementById("btn-search").onclick = () => {
-      if (lastCode) {
-        window.open(`https://www.google.com/search?q=${encodeURIComponent(lastCode)}`, '_blank');
-      }
+      if (lastCode) searchCode(lastCode);
     };
 
     document.getElementById("btn-copy").onclick = () => {
@@ -210,7 +337,14 @@
       }
     };
 
-    window.onload = initCamera;
+    function donateAlert() {
+      alert("Kahve desteği özelliğini kendi Papara veya IBAN bağlantınla güncelleyebilirsin!");
+    }
+
+    window.onload = () => {
+      initCamera();
+      renderHistory();
+    };
   </script>
 </body>
 </html>
