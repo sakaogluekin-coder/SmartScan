@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SmartScan</title>
+  
+  <!-- KRİTİK: Düzgün çalışan stabil 2.3.4 sürümü -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.4/html5-qrcode.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      justify-content: space-between;
+      padding: 12px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: rgba(30, 41, 59, 0.8);
+      border-radius: 12px;
+    }
+
+    .title {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .btn-coffee {
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    .camera-box {
+      position: relative;
+      width: 100%;
+      height: 50vh;
+      background: #000;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #reader {
+      width: 100%;
+      height: 100%;
+    }
+
+    #reader video {
+      object-fit: cover !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .result-box {
+      background: rgba(30, 41, 59, 0.8);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .result-code {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #38bdf8;
+      word-break: break-all;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .btn-main {
+      background: #22c55e;
+      color: #000;
+    }
+
+    .btn-sub {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .ad-box {
+      height: 50px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px dashed rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="title">Barkod Okuyucu</div>
+    <button class="btn-coffee" onclick="alert('Destek olduğunuz için teşekkürler!')">☕ Kahve Ismarla</button>
+  </header>
+
+  <div class="camera-box">
+    <div id="reader"></div>
+  </div>
+
+  <div class="result-box">
+    <div style="font-size:0.75rem; color:#94a3b8;">SONUÇ:</div>
+    <div class="result-code" id="code-text">Barkod hizalayın...</div>
+    
+    <div class="actions">
+      <button class="btn btn-main" id="btn-search">Web'de Ara</button>
+      <button class="btn btn-sub" id="btn-copy">Kopyala</button>
+    </div>
+  </div>
+
+  <div class="ad-box">
+    Reklam Alanı (320x50)
+  </div>
+
+  <script>
+    let lastCode = "";
+    let html5QrCode;
+
+    function onScanSuccess(decodedText) {
+      if (lastCode === decodedText) return;
+      lastCode = decodedText;
+
+      if (navigator.vibrate) {
+        navigator.vibrate(80);
+      }
+
+      document.getElementById("code-text").innerText = decodedText;
+    }
+
+    function initCamera() {
+      html5QrCode = new Html5Qrcode("reader");
+
+      // Çizgili ürün barkodları için özel yapılandırma
+      const config = {
+        fps: 20,
+        qrbox: { width: 300, height: 150 }, // Geniş yatay dikdörtgen alanı
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess
+      ).catch(err => {
+        // İkinci şans: Kamera kimliği ile dene
+        Html5Qrcode.getCameras().then(devices => {
+          if (devices && devices.length) {
+            html5QrCode.start(devices[0].id, config, onScanSuccess);
+          }
+        });
+      });
+    }
+
+    document.getElementById("btn-search").onclick = () => {
+      if (lastCode) {
+        window.open(`https://www.google.com/search?q=${encodeURIComponent(lastCode)}`, '_blank');
+      }
+    };
+
+    document.getElementById("btn-copy").onclick = () => {
+      if (lastCode) {
+        navigator.clipboard.writeText(lastCode);
+        alert("Kopyalandı!");
+      }
+    };
+
+    window.onload = initCamera;
+  </script>
+</body>
+</html>
